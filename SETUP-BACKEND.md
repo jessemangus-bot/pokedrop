@@ -31,7 +31,8 @@ Open `products.seed.json`. Each product looks like:
   "name": "Phantasmal Flames Booster Box",
   "maxPrice": 165,
   "feeds": [
-    { "type": "rss", "url": "PASTE_NOWINSTOCK_FEED_URL_HERE" }
+    { "type": "rss", "url": "https://www.reddit.com/r/PokemonRestocks/new/.rss",
+      "match": ["phantasmal", "booster box|display|bb"] }
   ]
 }
 ```
@@ -40,14 +41,25 @@ Open `products.seed.json`. Each product looks like:
   Over-max events still log to the feed but **won't** push.
 - `feeds` — where the server watches for that product. Two types:
 
-**RSS trackers (main source).** Go to **nowinstock.net**, find your
-product's tracker page (they cover Pokemon Center, Target, Walmart,
-Best Buy, GameStop, and more per item), and copy the page's **RSS feed
-link** (look for the RSS icon / "Get Notified" options). Paste it as the
-`url`. Any other restock tracker that offers RSS works the same way.
+**Community restock feeds via Reddit RSS (main source — free, fast).**
+Collector communities post restocks within seconds, and every subreddit
+publishes a real RSS feed at `/new/.rss`. The seed file ships with the
+two main ones already configured:
+
+- `https://www.reddit.com/r/PokemonRestocks/new/.rss`
+- `https://www.reddit.com/r/PKMNTCGDeals/new/.rss`
+
+Because these feeds cover *every* product, each feed entry uses `match`
+keywords to pick out only your product's posts:
+
+- Every entry in `match` must appear in the post title
+- `|` inside an entry means "or" — `"booster box|display|bb"` matches any
+  of those spellings
+- Keep keywords short and lowercase; posts are matched case-insensitively
+- Omit `match` entirely only for a feed that's already product-specific
 
 **Best Buy official API (optional, more direct).** Request a free API key
-at **developer.bestbuy.com**, find the product's SKU (it's on the Best Buy
+at **developer.bestbuy.com**, find the product's SKU (on the Best Buy
 product page under "Specifications"), and add:
 
 ```json
@@ -56,6 +68,13 @@ product page under "Specifications"), and add:
 
 Then set the `BESTBUY_API_KEY` environment variable when you deploy
 (Step 3). Delete the example Best Buy entry if you're not using it.
+
+**Other feeds that work:** any site offering RSS plugs straight in — for
+example the Pokemon Restocks newsletter at
+`https://pokemonrestocks.substack.com/feed` (newsier, less instant).
+Note on NowInStock: great tracker, but it offers its own alerts
+(email/Telegram/browser) rather than a public RSS feed, so it can't be
+pasted here — worth signing up for separately as a backup alert channel.
 
 > Note: the server copies `products.seed.json` into `data/products.json`
 > on first boot. After that, edit `data/products.json` on the server (or

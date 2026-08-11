@@ -1,23 +1,49 @@
 [
   {
-    "id": "prismatic-spc",
-    "name": "Prismatic Evolutions Super Premium Collection",
-    "maxPrice": null,
-    "feeds": [
-      { "type": "rss", "url": "PASTE_NOWINSTOCK_FEED_URL_HERE" }
-    ]
-  },
-  {
     "id": "phantasmal-flames-bb",
     "name": "Phantasmal Flames Booster Box",
     "maxPrice": 165,
     "feeds": [
-      { "type": "rss", "url": "PASTE_NOWINSTOCK_FEED_URL_HERE" }
+      { "type": "rss", "url": "https://www.reddit.com/r/PokemonRestocks/new/.rss",
+        "match": ["phantasmal", "booster box|display|bb"] },
+      { "type": "rss", "url": "https://www.reddit.com/r/PKMNTCGDeals/new/.rss",
+        "match": ["phantasmal", "booster box|display|bb"] }
+    ]
+  },
+  {
+    "id": "prismatic-spc",
+    "name": "Prismatic Evolutions Super Premium Collection",
+    "maxPrice": null,
+    "feeds": [
+      { "type": "rss", "url": "https://www.reddit.com/r/PokemonRestocks/new/.rss",
+        "match": ["prismatic", "super premium|spc"] },
+      { "type": "rss", "url": "https://www.reddit.com/r/PKMNTCGDeals/new/.rss",
+        "match": ["prismatic", "super premium|spc"] }
+    ]
+  },
+  {
+    "id": "destined-rivals-etb",
+    "name": "Destined Rivals Elite Trainer Box",
+    "maxPrice": null,
+    "feeds": [
+      { "type": "rss", "url": "https://www.reddit.com/r/PokemonRestocks/new/.rss",
+        "match": ["destined rivals", "elite trainer|etb"] },
+      { "type": "rss", "url": "https://www.reddit.com/r/PKMNTCGDeals/new/.rss",
+        "match": ["destined rivals", "elite trainer|etb"] }
+    ]
+  },
+  {
+    "id": "pokemon-center-any",
+    "name": "Pokemon Center — any drop or queue",
+    "maxPrice": null,
+    "feeds": [
+      { "type": "rss", "url": "https://www.reddit.com/r/PokemonRestocks/new/.rss",
+        "match": ["pokemon center|pokémon center"] }
     ]
   },
   {
     "id": "example-bestbuy-item",
-    "name": "Example Best Buy product (optional — needs BESTBUY_API_KEY env var)",
+    "name": "Example Best Buy product (optional - needs BESTBUY_API_KEY env var; replace sku)",
     "maxPrice": null,
     "feeds": [
       { "type": "bestbuy", "sku": "0000000" }

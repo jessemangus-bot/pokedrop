@@ -77,6 +77,8 @@ function extractPrice(text) {
   return m ? parseFloat(m[1].replace(/,/g, "")) : null;
 }
 function extractRetailer(text) {
+  const b = /^\s*\[([^\]]{2,30})\]/.exec(text || ""); // "[Target] Product..." style titles
+  if (b) return b[1].trim();
   const m = /\bat\s+([A-Za-z][A-Za-z0-9 .'&+-]{1,30})/.exec(text || "");
   return m ? m[1].trim() : "Web";
 }
@@ -125,28 +127,36 @@ async function recordAlert({ product, status, price, retailer, url }) {
 }
 
 /* ---------------- feed adapters ---------------- */
-const rss = new Parser({ timeout: 15000 });
+const rss = new Parser({ timeout: 15000, headers: { "User-Agent": "PokeDropAlerts/1.0 (personal stock alert app)" } });
+
+function matchesKeywords(text, match) {
+  if (!match || !match.length) return true; // no filter = product-specific feed
+  const hay = text.toLowerCase();
+  /* every entry must match; "a|b" inside an entry means "a OR b" */
+  return match.every((kw) => String(kw).toLowerCase().split("|").some((alt) => hay.includes(alt.trim())));
+}
 
 async function checkRssFeed(product, feed) {
   if (!feed.url || /PASTE_/.test(feed.url)) return; // unconfigured placeholder
   const parsed = await rss.parseURL(feed.url);
-  const key = feed.url;
+  const key = product.id + "|" + feed.url; // per-product memory, so one shared feed can serve many products
   seen[key] = seen[key] || [];
   const seenSet = new Set(seen[key]);
   const firstRun = seen[key].length === 0;
 
-  for (const item of (parsed.items || []).slice(0, 20)) {
+  for (const item of (parsed.items || []).slice(0, 25)) {
     const guid = item.guid || item.link || item.title + (item.isoDate || "");
     if (seenSet.has(guid)) continue;
     seenSet.add(guid);
     if (firstRun) continue; // don't spam history on the first poll — only alert on NEW events
 
     const text = `${item.title || ""} ${item.contentSnippet || ""}`;
+    if (!matchesKeywords(text, feed.match)) continue; // firehose feeds: only this product's posts
     await recordAlert({
       product,
       status: classify(text),
       price: extractPrice(text),
-      retailer: extractRetailer(text) !== "Web" ? extractRetailer(text) : (parsed.title || "Web"),
+      retailer: extractRetailer(item.title || text),
       url: item.link || null
     });
   }
