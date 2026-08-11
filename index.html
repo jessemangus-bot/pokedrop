@@ -595,7 +595,7 @@ function addAlert(a){
   renderAlerts();
   const alertsTab = document.querySelector('[data-panel="alerts"]');
   if(!alertsTab.classList.contains("active")) alertsTab.classList.add("has-new");
-  if(a.status!=="oos" && !a.over) notify(a);
+  if(a.status!=="oos" && !a.over && !a.remote) notify(a);
 }
 function renderAlerts(){
   emptyEl.style.display = alerts.length ? "none" : "block";
@@ -627,7 +627,7 @@ function renderAlerts(){
     if(a.demo) priceLine += (priceLine ? "  ·  " : "") + "demo event";
     card.querySelector(".alert-price").textContent = priceLine;
     const buy = card.querySelector(".btn-buy");
-    if(buy) buy.href = (RETAILERS[a.retailer] || RETAILERS["Specialty / LGS"])(a.name, a.max);
+    if(buy) buy.href = a.url || (RETAILERS[a.retailer] || RETAILERS["Specialty / LGS"])(a.name, a.max);
     const dis = card.querySelector(".dismiss");
     if(dis) dis.addEventListener("click",()=>{ alerts = alerts.filter(x=>x!==a); renderAlerts(); });
     feedEl.appendChild(card);
@@ -690,8 +690,70 @@ function refreshPermUI(){
   else { st.textContent="off"; }
 }
 $("#permBtn").addEventListener("click",()=>{
-  Notification.requestPermission().then(refreshPermUI);
+  Notification.requestPermission().then(p=>{
+    refreshPermUI();
+    if(p==="granted") subscribePush();
+  });
 });
+
+/* ---------------- live backend (auto-detected when served by server.js) ---------------- */
+const BACKEND_OK = location.protocol === "http:" || location.protocol === "https:";
+let backendActive = false, vapidKey = null;
+const seenRemote = new Set();
+
+function b64ToU8(b64){
+  const pad = "=".repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,"+").replace(/_/g,"/"));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+async function initBackend(){
+  if(!BACKEND_OK) return; /* opened as a local file — demo/standalone mode */
+  try{
+    const r = await fetch("/api/vapid-public-key", {cache:"no-store"});
+    if(!r.ok) throw 0;
+    vapidKey = (await r.json()).key;
+    backendActive = true;
+  }catch(e){ return; } /* static hosting only — app keeps working as before */
+
+  /* Real feeds are on: demo becomes opt-in instead of default */
+  const dt = $("#demoToggle");
+  if(dt.checked){ dt.checked = false; dt.dispatchEvent(new Event("change")); }
+  $("#liveChip").classList.remove("paused");
+  $("#liveText").textContent = "LIVE FEED";
+
+  if("serviceWorker" in navigator){
+    try{ await navigator.serviceWorker.register("sw.js"); }catch(e){}
+    /* Self-healing: if permission was granted before, quietly re-subscribe
+       (covers server redeploys that reset the subscriber list) */
+    if("Notification" in window && Notification.permission === "granted") subscribePush();
+  }
+  pollServer();
+  setInterval(pollServer, 20000);
+}
+async function subscribePush(){
+  if(!backendActive || !vapidKey || !("serviceWorker" in navigator)) return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToU8(vapidKey) });
+    await fetch("/api/subscribe", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(sub)});
+  }catch(e){}
+}
+async function pollServer(){
+  try{
+    const r = await fetch("/api/alerts", {cache:"no-store"});
+    if(!r.ok) return;
+    const items = await r.json();
+    items.slice().reverse().forEach(it=>{
+      if(seenRemote.has(it.id)) return;
+      seenRemote.add(it.id);
+      addAlert({
+        name: it.name, retailer: it.retailer || "Web", status: it.status || "instock",
+        price: it.price || "", max: it.max || null, over: !!it.over,
+        url: it.url || null, time: new Date(it.ts || Date.now()), remote: true
+      });
+    });
+  }catch(e){}
+}
 
 /* ---------------- demo engine ---------------- */
 const DEMO_BASE = {
@@ -734,8 +796,9 @@ refreshRetailerOptions();
 renderWatchlist();
 renderAlerts();
 refreshPermUI();
+initBackend();
 scheduleDemo();
-setTimeout(demoEvent, 2500); /* first demo alert quickly so the feed isn't empty */
+setTimeout(()=>{ if($("#demoToggle").checked) demoEvent(); }, 2500); /* first demo alert quickly so the feed isn't empty */
 
 })();
 </script>

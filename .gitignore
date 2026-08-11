@@ -1,0 +1,6 @@
+# Runtime data — contains your PRIVATE push keys and subscriber list.
+# Never commit this to a public repo.
+data/
+
+node_modules/
+.env

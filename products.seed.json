@@ -1,0 +1,26 @@
+[
+  {
+    "id": "prismatic-spc",
+    "name": "Prismatic Evolutions Super Premium Collection",
+    "maxPrice": null,
+    "feeds": [
+      { "type": "rss", "url": "PASTE_NOWINSTOCK_FEED_URL_HERE" }
+    ]
+  },
+  {
+    "id": "phantasmal-flames-bb",
+    "name": "Phantasmal Flames Booster Box",
+    "maxPrice": 165,
+    "feeds": [
+      { "type": "rss", "url": "PASTE_NOWINSTOCK_FEED_URL_HERE" }
+    ]
+  },
+  {
+    "id": "example-bestbuy-item",
+    "name": "Example Best Buy product (optional — needs BESTBUY_API_KEY env var)",
+    "maxPrice": null,
+    "feeds": [
+      { "type": "bestbuy", "sku": "0000000" }
+    ]
+  }
+]

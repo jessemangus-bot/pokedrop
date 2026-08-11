@@ -1,0 +1,18 @@
+{
+  "name": "pokedrop",
+  "version": "1.0.0",
+  "description": "Pokemon TCG restock alerts with real feeds and background push",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "rss-parser": "^3.13.0",
+    "web-push": "^3.6.7"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
