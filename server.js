@@ -134,10 +134,19 @@ const rss = new Parser({ timeout: 15000, headers: { "User-Agent": "PokeDropAlert
    rate limits fast (Reddit 429s after the first hit). This cache makes
    sure each unique URL is fetched at most once per poll cycle / feedcheck
    run, no matter how many products reference it. */
+let lastRedditFetchAt = 0;
 async function fetchFeedOnce(url, cache) {
   if (cache.has(url)) return cache.get(url);
   const entry = (async () => {
     try {
+      /* Reddit rate-limits per IP across ALL its URLs, not per individual
+         feed — so even distinct subreddit URLs fetched back-to-back can
+         429. Space out consecutive reddit.com requests by a few seconds. */
+      if (/(^|\.)reddit\.com$/.test(new URL(url).hostname)) {
+        const wait = lastRedditFetchAt + 4000 - Date.now();
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        lastRedditFetchAt = Date.now();
+      }
       const parsed = await rss.parseURL(url);
       return { items: parsed.items || [], error: null };
     } catch (err) {
