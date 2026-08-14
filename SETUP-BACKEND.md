@@ -179,6 +179,22 @@ friend and you've got a group alert system.
 
 ## Troubleshooting
 
+- **Only test alerts, nothing real:** visit **`/api/feedcheck`** on your
+  app URL. It fetches every configured feed right now and reports, per
+  feed: `"status": "ok"` plus how many recent posts match your keywords
+  (`matchingRecentItems`), or an `ERROR` with the reason. Interpreting it:
+  - All `ok` but `matchingRecentItems: 0` everywhere → the system is fine;
+    no matching posts have appeared yet. Restocks are bursty — the
+    catch-all "Pokemon Center — any drop" product should fire first since
+    it matches the most posts. You can also loosen keywords.
+  - `ERROR: Status code 403` on Reddit feeds → Reddit is blocking your
+    server's IP (common for cloud hosts). Fixes to try, in order: set
+    `POLL_SECONDS=300` in your environment variables (gentler rate);
+    or swap the feed URLs to an RSS mirror service such as Open RSS
+    (openrss.org) which republishes subreddit feeds; or run the server
+    from a home machine/droplet whose IP Reddit doesn't flag.
+  - Remember: matching posts only alert **going forward** — the first
+    poll memorizes history without alerting, by design.
 - **No push on test:** check you enabled notifications *on that device
   from the live HTTPS URL* (not localhost/file), and on iPhone that the
   app is on the home screen.

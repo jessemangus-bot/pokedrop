@@ -245,6 +245,45 @@ app.get("/api/test", async (req, res) => {
   res.json({ ok: true, sentTo: subs.length });
 });
 
+/* Diagnose your feeds: fetches each one right now and reports whether it
+   works, how many recent items match your keywords, and any errors.
+   Respects ADMIN_TOKEN the same way /api/test does. */
+app.get("/api/feedcheck", async (req, res) => {
+  if (process.env.ADMIN_TOKEN && req.query.key !== process.env.ADMIN_TOKEN) {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const report = [];
+  for (const product of products) {
+    for (const feed of product.feeds || []) {
+      if (feed.type !== "rss") {
+        report.push({ product: product.name, type: feed.type, status: "non-RSS feed (checked during normal polling)" });
+        continue;
+      }
+      if (!feed.url || /PASTE_/.test(feed.url)) {
+        report.push({ product: product.name, url: feed.url, status: "placeholder — not configured" });
+        continue;
+      }
+      try {
+        const parsed = await rss.parseURL(feed.url);
+        const items = (parsed.items || []).slice(0, 25);
+        const matching = items.filter((i) => matchesKeywords(`${i.title || ""} ${i.contentSnippet || ""}`, feed.match));
+        report.push({
+          product: product.name,
+          url: feed.url,
+          status: "ok",
+          itemsFetched: items.length,
+          matchingRecentItems: matching.length,
+          latestMatchingTitle: matching[0] ? matching[0].title : null,
+          newestItemTitle: items[0] ? items[0].title : null
+        });
+      } catch (err) {
+        report.push({ product: product.name, url: feed.url, status: "ERROR: " + err.message });
+      }
+    }
+  }
+  res.json(report);
+});
+
 app.listen(PORT, () => {
   console.log(`PokeDrop server on :${PORT} — polling ${products.length} product(s) every ${POLL_SECONDS}s`);
   pollOnce();
