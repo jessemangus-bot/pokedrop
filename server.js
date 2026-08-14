@@ -129,6 +129,25 @@ async function recordAlert({ product, status, price, retailer, url }) {
 /* ---------------- feed adapters ---------------- */
 const rss = new Parser({ timeout: 15000, headers: { "User-Agent": "PokeDropAlerts/1.0 (personal stock alert app)" } });
 
+/* Multiple products often share the same underlying feed URL (e.g. two
+   subreddits covering many products). Fetching it once per product hits
+   rate limits fast (Reddit 429s after the first hit). This cache makes
+   sure each unique URL is fetched at most once per poll cycle / feedcheck
+   run, no matter how many products reference it. */
+async function fetchFeedOnce(url, cache) {
+  if (cache.has(url)) return cache.get(url);
+  const entry = (async () => {
+    try {
+      const parsed = await rss.parseURL(url);
+      return { items: parsed.items || [], error: null };
+    } catch (err) {
+      return { items: [], error: err.message };
+    }
+  })();
+  cache.set(url, entry);
+  return entry;
+}
+
 function matchesKeywords(text, match) {
   if (!match || !match.length) return true; // no filter = product-specific feed
   const hay = text.toLowerCase();
@@ -136,15 +155,16 @@ function matchesKeywords(text, match) {
   return match.every((kw) => String(kw).toLowerCase().split("|").some((alt) => hay.includes(alt.trim())));
 }
 
-async function checkRssFeed(product, feed) {
+async function checkRssFeed(product, feed, cache) {
   if (!feed.url || /PASTE_/.test(feed.url)) return; // unconfigured placeholder
-  const parsed = await rss.parseURL(feed.url);
+  const { items: rawItems, error } = await fetchFeedOnce(feed.url, cache);
+  if (error) throw new Error(error);
   const key = product.id + "|" + feed.url; // per-product memory, so one shared feed can serve many products
   seen[key] = seen[key] || [];
   const seenSet = new Set(seen[key]);
   const firstRun = seen[key].length === 0;
 
-  for (const item of (parsed.items || []).slice(0, 25)) {
+  for (const item of rawItems.slice(0, 25)) {
     const guid = item.guid || item.link || item.title + (item.isoDate || "");
     if (seenSet.has(guid)) continue;
     seenSet.add(guid);
@@ -188,10 +208,11 @@ async function checkBestBuy(product, feed) {
 }
 
 async function pollOnce() {
+  const cache = new Map(); // fresh per cycle — each unique feed URL fetched once
   for (const product of products) {
     for (const feed of product.feeds || []) {
       try {
-        if (feed.type === "rss") await checkRssFeed(product, feed);
+        if (feed.type === "rss") await checkRssFeed(product, feed, cache);
         else if (feed.type === "bestbuy") await checkBestBuy(product, feed);
       } catch (err) {
         console.warn(`[poll] ${product.name} (${feed.type}) failed: ${err.message}`);
@@ -252,6 +273,7 @@ app.get("/api/feedcheck", async (req, res) => {
   if (process.env.ADMIN_TOKEN && req.query.key !== process.env.ADMIN_TOKEN) {
     return res.status(403).json({ error: "forbidden" });
   }
+  const cache = new Map(); // shared across every product below — each unique URL hit once
   const report = [];
   for (const product of products) {
     for (const feed of product.feeds || []) {
@@ -263,22 +285,22 @@ app.get("/api/feedcheck", async (req, res) => {
         report.push({ product: product.name, url: feed.url, status: "placeholder — not configured" });
         continue;
       }
-      try {
-        const parsed = await rss.parseURL(feed.url);
-        const items = (parsed.items || []).slice(0, 25);
-        const matching = items.filter((i) => matchesKeywords(`${i.title || ""} ${i.contentSnippet || ""}`, feed.match));
-        report.push({
-          product: product.name,
-          url: feed.url,
-          status: "ok",
-          itemsFetched: items.length,
-          matchingRecentItems: matching.length,
-          latestMatchingTitle: matching[0] ? matching[0].title : null,
-          newestItemTitle: items[0] ? items[0].title : null
-        });
-      } catch (err) {
-        report.push({ product: product.name, url: feed.url, status: "ERROR: " + err.message });
+      const { items: rawItems, error } = await fetchFeedOnce(feed.url, cache);
+      if (error) {
+        report.push({ product: product.name, url: feed.url, status: "ERROR: " + error });
+        continue;
       }
+      const items = rawItems.slice(0, 25);
+      const matching = items.filter((i) => matchesKeywords(`${i.title || ""} ${i.contentSnippet || ""}`, feed.match));
+      report.push({
+        product: product.name,
+        url: feed.url,
+        status: "ok",
+        itemsFetched: items.length,
+        matchingRecentItems: matching.length,
+        latestMatchingTitle: matching[0] ? matching[0].title : null,
+        newestItemTitle: items[0] ? items[0].title : null
+      });
     }
   }
   res.json(report);
