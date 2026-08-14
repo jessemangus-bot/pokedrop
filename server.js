@@ -135,22 +135,56 @@ const rss = new Parser({ timeout: 15000, headers: { "User-Agent": "PokeDropAlert
    sure each unique URL is fetched at most once per poll cycle / feedcheck
    run, no matter how many products reference it. */
 let lastRedditFetchAt = 0;
-async function fetchFeedOnce(url, cache) {
+
+/* Fetch raw XML ourselves (instead of rss.parseURL) so we can read Reddit's
+   real Retry-After header instead of guessing a fixed delay. Cloud hosts
+   like DigitalOcean share outbound IPs across many customers, so Reddit's
+   block can last well beyond a short fixed gap. On a 429, wait exactly
+   what Reddit asks for (capped, so a bad value can't hang the poller) and
+   retry once. */
+async function fetchXml(url) {
+  const isReddit = /(^|\.)reddit\.com$/.test(new URL(url).hostname);
+  if (isReddit) {
+    const wait = lastRedditFetchAt + 2000 - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastRedditFetchAt = Date.now();
+  }
+  const res = await fetch(url, {
+    headers: { "User-Agent": "PokeDropAlerts/1.0 (personal stock alert app)" }
+  });
+  if (res.status === 429) {
+    const retryAfter = Math.min(parseInt(res.headers.get("retry-after") || "30", 10) || 30, 120);
+    const err = new Error(`Status code 429`);
+    err.retryAfterSeconds = retryAfter;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`Status code ${res.status}`);
+  if (isReddit) lastRedditFetchAt = Date.now();
+  return res.text();
+}
+
+async function fetchFeedOnce(url, cache, { retryOn429 = true } = {}) {
   if (cache.has(url)) return cache.get(url);
   const entry = (async () => {
     try {
-      /* Reddit rate-limits per IP across ALL its URLs, not per individual
-         feed — so even distinct subreddit URLs fetched back-to-back can
-         429. Space out consecutive reddit.com requests by a few seconds. */
-      if (/(^|\.)reddit\.com$/.test(new URL(url).hostname)) {
-        const wait = lastRedditFetchAt + 4000 - Date.now();
-        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-        lastRedditFetchAt = Date.now();
-      }
-      const parsed = await rss.parseURL(url);
+      const xml = await fetchXml(url);
+      const parsed = await rss.parseString(xml);
       return { items: parsed.items || [], error: null };
     } catch (err) {
-      return { items: [], error: err.message };
+      if (err.retryAfterSeconds && retryOn429) {
+        // Background poller can afford to wait out Reddit's own cooldown and retry once.
+        await new Promise((r) => setTimeout(r, err.retryAfterSeconds * 1000));
+        try {
+          const xml = await fetchXml(url);
+          const parsed = await rss.parseString(xml);
+          return { items: parsed.items || [], error: null };
+        } catch (err2) {
+          return { items: [], error: err2.message + (err2.retryAfterSeconds ? ` (retry after ${err2.retryAfterSeconds}s)` : "") };
+        }
+      }
+      // Diagnostic endpoint: report immediately, including how long Reddit wants us to wait —
+      // don't hang the HTTP request for up to two minutes just to prove the same thing.
+      return { items: [], error: err.message + (err.retryAfterSeconds ? ` (retry after ${err.retryAfterSeconds}s)` : "") };
     }
   })();
   cache.set(url, entry);
@@ -294,7 +328,7 @@ app.get("/api/feedcheck", async (req, res) => {
         report.push({ product: product.name, url: feed.url, status: "placeholder — not configured" });
         continue;
       }
-      const { items: rawItems, error } = await fetchFeedOnce(feed.url, cache);
+      const { items: rawItems, error } = await fetchFeedOnce(feed.url, cache, { retryOn429: false });
       if (error) {
         report.push({ product: product.name, url: feed.url, status: "ERROR: " + error });
         continue;
